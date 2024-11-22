@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <title>Chat en Tiempo Real</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client/dist/sockjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+<div class="bg-blue-500 text-white py-4 px-6 flex justify-between items-center">
+    <div class="flex items-center">
+        <h1 class="text-2xl font-bold">Chat en Tiempo Real</h1>
+        <span class="ml-4">Bienvenido, <span th:text="${username}" class="font-bold"></span></span>
+    </div>
+    <form th:action="@{/logout}" method="POST" class="m-0">
+        <button type="submit"
+                class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+            Cerrar Sesión
+        </button>
+    </form>
+</div>
+
+<div class="flex-1 overflow-auto p-4" id="messageContainer">
+    <!-- Aquí se mostrarán los mensajes -->
+</div>
+
+<form id="chatForm" class="flex items-center p-4 bg-gray-200">
+    <input type="hidden" id="username" th:value="${username}">
+    <input type="text" id="message" placeholder="Escribe tu mensaje..."
+           class="flex-1 px-4 py-2 border rounded shadow-sm focus:outline-none focus:ring"
+           required>
+    <button type="submit"
+            class="ml-2 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700 focus:outline-none">
+        Enviar
+    </button>
+</form>
+<script>
+    let stompClient = null;
+
+    // Conecta al servidor WebSocket
+    function connect() {
+        try {
+            const socket = new SockJS('/chat');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function (frame) {
+                console.log('Conectado: ' + frame);
+
+                // Suscribirse a los mensajes del servidor
+                stompClient.subscribe('/topic/messages', function (messageOutput) {
+                    showMessage(JSON.parse(messageOutput.body));
+                });
+            }, function(error) {
+                console.error('Error de conexión:', error);
+                setTimeout(connect, 5000); // Reintentar conexión después de 5 segundos
+            });
+        } catch (error) {
+            console.error('Error al inicializar la conexión:', error);
+        }
+    }
+
+    // Envía un mensaje al servidor
+    function sendMessage() {
+        const username = document.getElementById('username').value;
+        const messageInput = document.getElementById('message');
+        const message = messageInput.value;
+
+        if (message.trim() && stompClient) {
+            const chatMessage = {
+                username: username,
+                content: message
+            };
+
+            stompClient.send("/app/sendMessage", {}, JSON.stringify(chatMessage));
+            messageInput.value = ''; // Limpia el campo de texto
+        }
+    }
+
+    // Muestra un mensaje en el contenedor de mensajes
+    function showMessage(message) {
+        const messageContainer = document.getElementById('messageContainer');
+        const messageElement = document.createElement('div');
+
+        // Formatear el mensaje con el nombre de usuario
+        messageElement.textContent = `${message.username}: ${message.content}`;
+        messageElement.className = "bg-white p-2 my-2 rounded shadow";
+        messageContainer.appendChild(messageElement);
+
+        // Desplaza automáticamente hacia abajo
+        messageContainer.scrollTop = messageContainer.scrollHeight;
+    }
+
+    // Desconectar WebSocket antes de cerrar sesión
+    document.querySelector('form[action="/logout"]').addEventListener('submit', function() {
+        if (stompClient !== null) {
+            stompClient.disconnect();
+        }
+    });
+
+    // Esperar a que el DOM esté completamente cargado
+    document.addEventListener('DOMContentLoaded', function() {
+        // Conectar al cargar la página
+        connect();
+
+        // Manejar el envío del formulario
+        document.getElementById('chatForm').addEventListener('submit', function (e) {
+            e.preventDefault(); // Evitar recargar la página
+            sendMessage();
+        });
+    });
+</script>
+</body>
+</html>
